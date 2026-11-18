@@ -4,9 +4,18 @@
 |---|---------|--------|
 | 1 | GDVTools analysieren (Bytecode, Einstiegspunkte, Libs) | erledigt |
 | 2 | Java-8-Laufzeit bereitstellen, Basiskonvertierung reproduzieren | erledigt |
-| 3 | Verhalten unter Java 21 prüfen | erledigt (Rev 324 läuft, siehe Befund) |
+| 3 | Verhalten unter Java 21 pruefen (Release 2000 + 2003) | erledigt, siehe Befund |
 | 4 | Client: Datei-Modus (R1) | erledigt |
-| 5 | Client: Stream-Modus über Temp-Dateien (R2) | erledigt |
-| 6 | Tests mit beispiel.xml (beide Richtungen) | offen |
-| 7 | Persistenter Worker (2b) | offen |
-| 8 | Build/Sourcen auf miniedi, privates Repo | offen |
+| 5 | Client: Stream-Modus ueber Temp-Dateien (R2) | erledigt |
+| 6 | Tests mit beispiel.xml und Konvertierungsversuch2.xml (beide Richtungen) | erledigt |
+| 7 | Persistenter Worker (Java 8, Zeilenprotokoll) | erledigt |
+| 8 | Build/Sourcen auf miniedi, privates Repo | erledigt |
+| 9 | Streams ohne Temp-Dateien im Worker (Protokoll mit Laengenprefix) | offen |
+
+## Befund Java 21 (18.11.2026)
+
+- Release 2000, beispiel.xml (47 KB): Java 21 erzeugt 37.214 Bytes, sieht korrekt aus.
+- Release 2003, Konvertierungsversuch2.xml (8,8 MB): Java 21 beendet mit exit 0, schreibt
+  954 Log-Zeilen wie Java 8, erzeugt aber eine **0-Byte-Datei**. Java 8 erzeugt 6.062.587 Bytes.
+- Damit ist die Inkompatibilitaet real, aber **still**: kein Fehler, kein Exit-Code - nur leere
+  Ausgabe. Genau deshalb muss die Bruecke die Ausgabegroesse pruefen und bei 0 Bytes abbrechen.
