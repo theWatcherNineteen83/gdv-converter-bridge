@@ -10,8 +10,8 @@
   <packaging>pom</packaging>
 
   <modules>
-    <module>gdv-client</module>
     <module>gdv-worker</module>
+    <module>gdv-client</module>
   </modules>
 
   <properties>

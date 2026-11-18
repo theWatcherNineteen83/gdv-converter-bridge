@@ -1,81 +1,108 @@
 package de.prometheus.gdv.worker;
 
+import gdv.XmlGdvKonverter;
+import gdv.nachrichten.SatzartElemente;
+
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * Persistenter Java-8-Worker: liest Zeilenbefehle von stdin, ruft den GDV-Konverter im selben
- * Prozess auf und antwortet auf stdout.
+ * Persistenter Java-8-Worker fuer echte Stream-Konvertierung (kein Temp-File).
  *
- * Protokoll:
- *   CONVERT <release> <inDatei> <outDatei>  ->  OK <bytes> | ERR <text>
- *   PING                                    ->  PONG
- *   QUIT                                    ->  BYE
- *
- * Es wird eine SecurityManager-Instanz gesetzt, die System.exit blockiert - der GDV-Code ruft
- * es im Fehlerfall auf und wuerde sonst den Worker beenden.
+ * Protokoll (binaersicher, stdout wird exklusiv fuer das Protokoll genutzt):
+ *   PING                                   -> PONG
+ *   CONVERT <release> <XML|SNN> <len>\n<len Bytes>
+ *                                          -> OK <len>\n<len Bytes> | ERR <text>
+ *   QUIT                                   -> BYE
  */
 public final class WorkerMain {
 
+    private static final Map<String, XmlGdvKonverter> CACHE = new HashMap<String, XmlGdvKonverter>();
+    private static String props;
+    private static PrintStream proto;
+    private static SatzartElemente satzarten;
+
     public static void main(String[] args) throws Exception {
+        props = System.getProperty("gdv.props");
+        if (props == null) {
+            System.err.println("gdv.props fehlt");
+            System.exit(2);
+        }
+        proto = new PrintStream(new FileOutputStream(FileDescriptor.out), true, "UTF-8");
+        // GDV-Code schreibt Trace auf System.out - das wuerde das Protokoll zerstoeren.
+        System.setOut(new PrintStream(new OutputStream() {
+            @Override public void write(int b) { }
+        }));
         installExitBlocker();
-        BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-        PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, "UTF-8");
-        PrintStream realOut = System.out;
-        String line;
-        while ((line = in.readLine()) != null) {
+        satzarten = new SatzartElemente();   // initialisiert die Satzart-Registry (sonst NPE)
+
+        DataInputStream in = new DataInputStream(new BufferedInputStream(System.in));
+        while (true) {
+            String line = readLine(in);
+            if (line == null) break;
             line = line.trim();
-            if (line.isEmpty()) continue;
-            if (line.equals("QUIT")) { out.println("BYE"); break; }
-            if (line.equals("PING")) { out.println("PONG"); continue; }
-            if (!line.startsWith("CONVERT ")) { out.println("ERR unbekannter Befehl"); continue; }
-            String[] p = line.split("\\s+", 4);
-            if (p.length < 4) { out.println("ERR Argumente fehlen"); continue; }
-            String release = p[1];
-            String inFile = p[2];
-            String outFile = p[3];
+            if (line.length() == 0) continue;
+            if (line.equals("QUIT")) { proto.println("BYE"); break; }
+            if (line.equals("PING")) { proto.println("PONG"); continue; }
+            if (!line.startsWith("CONVERT ")) { proto.println("ERR unbekannter Befehl"); continue; }
+
+            String[] p = line.split("\\s+");
+            if (p.length != 4) { proto.println("ERR Argumente erwartet: CONVERT <release> <XML|SNN> <len>"); continue; }
             try {
-                String[] convArgs = new String[] { inFile, "5", release, System.getProperty("gdv.props") };
-                // GDV-CLI im selben Prozess: Ausgabe (Log) wird umgeleitet, damit das Protokoll sauber bleibt
-                System.setOut(devNull());
-                sn.SN_XMLKonverter.main(convArgs);
-                System.setOut(realOut);
-                File f = new File(outFile);
-                if (!f.exists()) {
-                    out.println("ERR keine Ausgabedatei erzeugt");
-                } else if (f.length() == 0) {
-                    out.println("ERR Ausgabedatei ist leer");
+                String release = p[1];
+                String direction = p[2].toUpperCase();
+                int len = Integer.parseInt(p[3]);
+                byte[] data = new byte[len];
+                in.readFully(data);
+                byte[] result = convert(data, release, direction);
+                if (result.length == 0) {
+                    proto.println("ERR leere Ausgabe");
                 } else {
-                    out.println("OK " + f.length());
+                    proto.println("OK " + result.length);
+                    proto.write(result);
+                    proto.flush();
                 }
             } catch (Throwable t) {
-                System.setOut(realOut);
-                out.println("ERR " + t.getClass().getSimpleName() + ": " + t.getMessage());
+                proto.println("ERR " + t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()).replace('\n', ' '));
             }
         }
     }
 
-    private static PrintStream devNull() {
-        try {
-            return new PrintStream(new OutputStream() {
-                @Override public void write(int b) { }
-            });
-        } catch (Exception e) {
-            return System.out;
+    private static byte[] convert(byte[] data, String release, String direction) throws Exception {
+        XmlGdvKonverter converter = CACHE.get(release);
+        if (converter == null) {
+            converter = new XmlGdvKonverter("gdv" + release + ".xsd", props, release);
+            CACHE.put(release, converter);
         }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayInputStream in = new ByteArrayInputStream(data);
+        if ("XML".equals(direction)) {
+            converter.convertToGdv(in, out);
+        } else {
+            converter.convertToXml(in, out, release);
+        }
+        return out.toByteArray();
+    }
+
+    private static String readLine(InputStream in) throws IOException {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        int c;
+        while ((c = in.read()) != -1) {
+            if (c == '\n') return new String(buf.toByteArray(), StandardCharsets.UTF_8);
+            if (c != '\r') buf.write(c);
+        }
+        return buf.size() == 0 ? null : new String(buf.toByteArray(), StandardCharsets.UTF_8);
     }
 
     @SuppressWarnings("removal")
     private static void installExitBlocker() {
         try {
             System.setSecurityManager(new SecurityManager() {
-                @Override public void checkExit(int status) {
-                    throw new SecurityException("System.exit(" + status + ") blocked");
-                }
+                @Override public void checkExit(int status) { throw new SecurityException("System.exit(" + status + ") blocked"); }
                 @Override public void checkPermission(java.security.Permission perm) { }
             });
-        } catch (Throwable ignored) {
-            // SecurityManager nicht verfuegbar: Worker bleibt trotzdem nutzbar, nur ohne Schutz
-        }
+        } catch (Throwable ignored) { }
     }
 }

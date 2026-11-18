@@ -1,5 +1,6 @@
 package de.prometheus.gdv;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -7,22 +8,29 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Ruft den GDV-XMLKonverter in einem Java-8-Prozess auf.
+ * Bruecke zum GDV-XMLKonverter. Der Konverter laeuft immer in einem Java-8-Prozess.
+ *
+ * Streams laufen ueber einen persistenten Worker (binäres Protokoll, kein Temp-File).
+ * Ist kein Worker-Classpath gesetzt, faellt die Stream-Konvertierung auf Temp-Dateien
+ * zurueck (langsamer, aber funktional identisch).
  */
-public final class GdvBridge {
+public final class GdvBridge implements Closeable {
 
     private final Path gdvHome;
     private final Path java8;
     private final Path propertyFile;
+    private final List<Path> workerClasspath;
+    private GdvWorker worker;
 
     public GdvBridge(Path gdvHome, Path java8) {
-        this(gdvHome, java8, null);
+        this(gdvHome, java8, null, List.of());
     }
 
-    public GdvBridge(Path gdvHome, Path java8, Path propertyFile) {
+    public GdvBridge(Path gdvHome, Path java8, Path propertyFile, List<Path> workerClasspath) {
         this.gdvHome = gdvHome.toAbsolutePath();
         this.java8 = java8.toAbsolutePath();
         this.propertyFile = propertyFile;
+        this.workerClasspath = workerClasspath == null ? List.of() : List.copyOf(workerClasspath);
         if (!Files.isExecutable(this.java8)) {
             throw new IllegalArgumentException("Java 8 Binary nicht ausfuehrbar: " + this.java8);
         }
@@ -31,35 +39,39 @@ public final class GdvBridge {
         }
     }
 
-    /** Konvertiert eine Datei; die Ausgabedatei wird aus der Eingabeendung abgeleitet. */
-    public void convertFile(Path in, Path out, String release) throws IOException, InterruptedException {
+    /** Konvertiert eine Datei; Richtung ergibt sich aus der Endung. */
+    public void convertFile(Path in, Path out, String release) throws IOException {
         Direction dir = Direction.of(in.getFileName().toString());
-        Path work = Files.createTempDirectory("gdv-work-");
-        Path props = writeProperties(work);
-        try {
-            Path localIn = work.resolve("input" + dir.inExt());
-            Files.copy(in, localIn, StandardCopyOption.REPLACE_EXISTING);
-            Path localOut = work.resolve("input" + dir.outExt());
-            Result r = run(localIn, release, props);
-            if (r.exit != 0 || !Files.exists(localOut) || Files.size(localOut) == 0) {
-                throw new IOException("Konvertierung fehlgeschlagen (exit=" + r.exit + "):\n" + r.log);
-            }
-            Files.createDirectories(out.toAbsolutePath().getParent());
-            Files.copy(localOut, out, StandardCopyOption.REPLACE_EXISTING);
-        } finally {
-            deleteRecursively(work);
-        }
+        byte[] result = convertStream(Files.readAllBytes(in), release, dir);
+        Files.createDirectories(out.toAbsolutePath().getParent());
+        Files.write(out, result);
     }
 
-    /** Konvertiert Bytes und gibt das Ergebnis zurück (Stufe 2a: ueber Temp-Dateien). */
-    public byte[] convertStream(byte[] in, String release, Direction dir) throws IOException, InterruptedException {
+    /** Konvertiert Bytes ohne Temp-Datei (Worker) bzw. ueber Temp-Dateien (Fallback). */
+    public byte[] convertStream(byte[] data, String release, Direction dir) throws IOException {
+        if (!workerClasspath.isEmpty()) {
+            return worker().convert(data, release, dir);
+        }
+        return convertViaTempFiles(data, release, dir);
+    }
+
+    private GdvWorker worker() throws IOException {
+        if (worker == null) {
+            List<Path> cp = new ArrayList<>(workerClasspath);
+            cp.add(gdvHome.resolve("lib").resolve("*"));
+            cp.add(gdvHome.resolve("GDV-Schadennetz.jar"));
+            worker = GdvWorker.start(java8, cp, propertiesFile());
+        }
+        return worker;
+    }
+
+    private byte[] convertViaTempFiles(byte[] data, String release, Direction dir) throws IOException {
         Path work = Files.createTempDirectory("gdv-work-");
-        Path props = writeProperties(work);
         try {
             Path localIn = work.resolve("input" + dir.inExt());
-            Files.write(localIn, in);
+            Files.write(localIn, data);
             Path localOut = work.resolve("input" + dir.outExt());
-            Result r = run(localIn, release, props);
+            Result r = run(localIn, release, propertiesFile());
             if (r.exit != 0 || !Files.exists(localOut)) {
                 throw new IOException("Konvertierung fehlgeschlagen (exit=" + r.exit + "):\n" + r.log);
             }
@@ -69,29 +81,10 @@ public final class GdvBridge {
         }
     }
 
-    private Result run(Path input, String release, Path props) throws IOException, InterruptedException {
-        String classpath = gdvHome.resolve("lib").toString() + "/*"
-                + java.io.File.pathSeparator + gdvHome.resolve("GDV-Schadennetz.jar");
-        List<String> cmd = new ArrayList<>();
-        cmd.add(java8.toString());
-        cmd.add("-cp");
-        cmd.add(classpath);
-        cmd.add("sn.SN_XMLKonverter");
-        cmd.add(input.toString());
-        cmd.add("5");
-        cmd.add(release);
-        cmd.add(props.toString());
-
-        ProcessBuilder pb = new ProcessBuilder(cmd).directory(gdvHome.toFile()).redirectErrorStream(true);
-        Process p = pb.start();
-        String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        int exit = p.waitFor();
-        return new Result(exit, log);
-    }
-
-    private Path writeProperties(Path work) throws IOException {
+    private Path propertiesFile() throws IOException {
         if (propertyFile != null) return propertyFile;
-        Path props = work.resolve("konverter.properties");
+        Path props = Files.createTempFile("gdv-", ".properties");
+        props.toFile().deleteOnExit();
         String content = "[GDV]\n"
                 + "schemaPath=" + gdvHome.resolve("konfig").resolve("xml") + "/\n"
                 + "workingPath=" + gdvHome.resolve("konfig") + "/\n"
@@ -101,12 +94,39 @@ public final class GdvBridge {
         return props;
     }
 
+    private Result run(Path input, String release, Path props) throws IOException {
+        String classpath = gdvHome.resolve("lib").toString() + "/*"
+                + java.io.File.pathSeparator + gdvHome.resolve("GDV-Schadennetz.jar");
+        List<String> cmd = List.of(java8.toString(), "-cp", classpath, "sn.SN_XMLKonverter",
+                input.toString(), "5", release, props.toString());
+        ProcessBuilder pb = new ProcessBuilder(cmd).directory(gdvHome.toFile()).redirectErrorStream(true);
+        Process p = pb.start();
+        java.io.PrintStream origOut = System.out;
+        String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exit;
+        try {
+            exit = p.waitFor();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted", e);
+        }
+        return new Result(exit, log);
+    }
+
     private static void deleteRecursively(Path p) {
         try (var s = Files.walk(p)) {
             s.sorted((a, b) -> b.compareTo(a)).forEach(x -> {
                 try { Files.deleteIfExists(x); } catch (IOException ignored) { }
             });
         } catch (IOException ignored) { }
+    }
+
+    @Override
+    public void close() {
+        if (worker != null) {
+            worker.close();
+            worker = null;
+        }
     }
 
     private record Result(int exit, String log) { }

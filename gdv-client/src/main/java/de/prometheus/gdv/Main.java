@@ -1,7 +1,9 @@
 package de.prometheus.gdv;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class Main {
@@ -13,10 +15,13 @@ public final class Main {
         Path in = Path.of(required(a, "in", null));
         Path out = Path.of(required(a, "out", null));
         String release = required(a, "release", null);
+        String workerCp = a.get("worker-cp");
 
-        GdvBridge bridge = new GdvBridge(gdvHome, java8);
-        bridge.convertFile(in, out, release);
-        System.out.println("OK " + out + " (" + java.nio.file.Files.size(out) + " Bytes)");
+        try (GdvBridge bridge = new GdvBridge(gdvHome, java8, null,
+                workerCp == null ? List.of() : List.of(Path.of(workerCp)))) {
+            bridge.convertFile(in, out, release);
+        }
+        System.out.println("OK " + out + " (" + Files.size(out) + " Bytes)");
     }
 
     private static String required(Map<String, String> a, String key, String env) {
