@@ -16,6 +16,7 @@ class GdvBridgeTest {
     void konvertiertBeispielXml() throws Exception {
         Path in = Path.of(System.getProperty("gdv.test.xml", ""));
         assumeTrue(Files.exists(in), "gdv.test.xml nicht gesetzt");
+        assumeTrue(Files.isExecutable(java8()), "Java 8 Binary fehlt: " + java8());
         Path out = Files.createTempFile("gdv-it-", ".snn");
         try (GdvBridge bridge = new GdvBridge(gdvHome(), java8(), null, workerCp())) {
             bridge.convertFile(in, out, release());
