@@ -12,15 +12,15 @@ Siehe `.specify/spec.md`, `.specify/plan.md`, `.specify/tasks.md`.
 ## Voraussetzungen
 
 - JDK 21 (Client)
-- JDK 8 (Konverter-Prozess), z. B. `/home/prometheus/java/temurin8`
-- GDVTools entpackt, z. B. `/home/prometheus/gdv/GDVTools`
+- JDK 8 (Konverter-Prozess), z. B. `/opt/jdk8`
+- GDVTools entpackt, z. B. `/opt/gdv/GDVTools`
 
 ## Aufruf
 
 ```bash
 java -cp gdv-client/target/classes de.prometheus.gdv.Main \
-  --gdv-home /home/prometheus/gdv/GDVTools \
-  --java8    /home/prometheus/java/temurin8/bin/java \
+  --gdv-home /opt/gdv/GDVTools \
+  --java8    /opt/jdk8/bin/java \
   --in       beispiel.xml \
   --out      beispiel.snn \
   --release  2000

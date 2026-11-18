@@ -9,7 +9,7 @@
 | 5 | Client: Stream-Modus ueber Temp-Dateien (R2) | erledigt |
 | 6 | Tests mit beispiel.xml und Konvertierungsversuch2.xml (beide Richtungen) | erledigt |
 | 7 | Persistenter Worker (Java 8, Zeilenprotokoll) | erledigt |
-| 8 | Build/Sourcen auf miniedi, privates Repo | erledigt |
+| 8 | Build/Sourcen auf Build-Host, privates Repo | erledigt |
 | 9 | Streams ohne Temp-Dateien im Worker (Protokoll mit Laengenprefix) | offen |
 
 ## Befund Java 21 (18.11.2026)
