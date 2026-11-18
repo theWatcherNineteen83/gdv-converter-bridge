@@ -32,10 +32,17 @@ public final class GdvWorker implements Closeable {
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
         Process p = pb.start();
         GdvWorker w = new GdvWorker(p);
-        String pong = w.readLineOrFail();
-        if (!"PONG".equals(pong)) {
+        try {
+            w.out.write("PING\n".getBytes(StandardCharsets.UTF_8));
+            w.out.flush();
+            String pong = w.readLineOrFail();
+            if (!"PONG".equals(pong)) {
+                w.close();
+                throw new IOException("Worker antwortet nicht auf PING: " + pong);
+            }
+        } catch (IOException e) {
             w.close();
-            throw new IOException("Worker antwortet nicht auf PING: " + pong);
+            throw e;
         }
         return w;
     }
