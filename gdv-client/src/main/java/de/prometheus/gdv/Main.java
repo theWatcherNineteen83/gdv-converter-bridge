@@ -11,17 +11,20 @@ public final class Main {
     public static void main(String[] args) throws Exception {
         Map<String, String> a = parse(args);
         Path gdvHome = Path.of(required(a, "gdv-home", "GDV_HOME"));
-        Path java8 = Path.of(required(a, "java8", "GDV_JAVA8"));
         Path in = Path.of(required(a, "in", null));
         Path out = Path.of(required(a, "out", null));
         String release = required(a, "release", null);
         String workerCp = a.get("worker-cp");
+        boolean nativeMode = a.containsKey("native");
 
-        try (GdvBridge bridge = new GdvBridge(gdvHome, java8, null,
-                workerCp == null ? List.of() : List.of(Path.of(workerCp)))) {
+        try (GdvBridge bridge = nativeMode
+                ? GdvBridge.nativeMode(gdvHome)
+                : new GdvBridge(gdvHome, Path.of(required(a, "java8", "GDV_JAVA8")), null,
+                        workerCp == null ? List.of() : List.of(Path.of(workerCp)))) {
             bridge.convertFile(in, out, release);
         }
-        System.out.println("OK " + out + " (" + Files.size(out) + " Bytes)");
+        System.out.println("OK " + out + " (" + Files.size(out) + " Bytes, "
+                + (nativeMode ? "native" : workerCp != null ? "worker" : "cli") + ")");
     }
 
     private static String required(Map<String, String> a, String key, String env) {

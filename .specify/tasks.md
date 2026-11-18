@@ -22,7 +22,19 @@
 - Verifiziert: Release 2003, 8,8 MB -> 6.062.587 Bytes, SHA-256 identisch zum CLI-Weg
   (ce4f3f11...1751). Ohne Worker-Classpath faellt der Client auf Temp-Dateien zurueck.
 
-## Befund Java 21 (18.11.2026)
+## Befund Java 21 (18.11.2026, seziert)
+
+- Der Konvertierungskern laeuft unter Java 21 korrekt. Entscheidend ist der Zielstream:
+  - direkter `FileOutputStream`: **0 Bytes**, Exit 0, keine Exception (reproduziert)
+  - `ByteArrayOutputStream` (in-memory): **6.062.587 Bytes**, SHA-256 identisch zu Java 8
+- Java 8 liefert in beiden Faellen dasselbe Ergebnis. Die Abweichung liegt also im
+  abschliessenden Schreib-/Flush-Pfad des GDV-Serializers gegen einen Dateistream, nicht in
+  der Konvertierungslogik. Der GDV-Code schluckt den Fehler (keine Exception sichtbar).
+- Konsequenz: native Modus konvertiert in den Speicher und schreibt die Datei selbst.
+- Verifiziert: Release 2003 -> 6.062.587 Bytes, Release 2000 -> 37.214 Bytes, beide
+  byte-identisch zum Java-8-Weg.
+
+## Befund Java 21 (erste Beobachtung)
 
 - Release 2000, beispiel.xml (47 KB): Java 21 erzeugt 37.214 Bytes, sieht korrekt aus.
 - Release 2003, beispiel2003.xml (8,8 MB): Java 21 beendet mit exit 0, schreibt 954

@@ -8,54 +8,84 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Bruecke zum GDV-XMLKonverter. Der Konverter laeuft immer in einem Java-8-Prozess.
+ * Bruecke zum GDV-XMLKonverter.
  *
- * Streams laufen ueber einen persistenten Worker (binäres Protokoll, kein Temp-File).
- * Ist kein Worker-Classpath gesetzt, faellt die Stream-Konvertierung auf Temp-Dateien
- * zurueck (langsamer, aber funktional identisch).
+ * Drei Betriebsarten:
+ *  - native:   GDV-Klassen laufen im Java-21-Prozess (kein Java 8 noetig, in-memory)
+ *  - worker:   persistenter Java-8-Prozess mit binaerem Protokoll (in-memory)
+ *  - fallback: Java-8-Kindprozess pro Aufruf ueber die GDV-CLI (Temp-Dateien)
+ *
+ * Achtung: Der native Modus schreibt bewusst in einen ByteArrayOutputStream. Direktes
+ * Schreiben in einen FileOutputStream liefert auf Java 21 eine leere Datei.
  */
 public final class GdvBridge implements Closeable {
+
+    private enum Mode { NATIVE, WORKER, CLI }
 
     private final Path gdvHome;
     private final Path java8;
     private final Path propertyFile;
     private final List<Path> workerClasspath;
+    private final Mode mode;
+
     private GdvWorker worker;
+    private NativeGdv nativeGdv;
 
     public GdvBridge(Path gdvHome, Path java8) {
-        this(gdvHome, java8, null, List.of());
+        this(gdvHome, java8, null, List.of(), Mode.CLI);
     }
 
     public GdvBridge(Path gdvHome, Path java8, Path propertyFile, List<Path> workerClasspath) {
+        this(gdvHome, java8, propertyFile, workerClasspath, Mode.WORKER);
+    }
+
+    private GdvBridge(Path gdvHome, Path java8, Path propertyFile, List<Path> workerClasspath, Mode mode) {
         this.gdvHome = gdvHome.toAbsolutePath();
-        this.java8 = java8.toAbsolutePath();
+        this.java8 = java8 == null ? null : java8.toAbsolutePath();
         this.propertyFile = propertyFile;
         this.workerClasspath = workerClasspath == null ? List.of() : List.copyOf(workerClasspath);
-        if (!Files.isExecutable(this.java8)) {
-            throw new IllegalArgumentException("Java 8 Binary nicht ausfuehrbar: " + this.java8);
+        this.mode = mode == Mode.WORKER && this.workerClasspath.isEmpty() ? Mode.CLI : mode;
+        if (this.mode != Mode.NATIVE) {
+            if (this.java8 == null || !Files.isExecutable(this.java8)) {
+                throw new IllegalArgumentException("Java 8 Binary nicht ausfuehrbar: " + this.java8);
+            }
         }
         if (!Files.isDirectory(this.gdvHome.resolve("konfig"))) {
             throw new IllegalArgumentException("GDVTools-Verzeichnis ungueltig: " + this.gdvHome);
         }
     }
 
-    /** Konvertiert eine Datei; Richtung ergibt sich aus der Endung. */
-    public void convertFile(Path in, Path out, String release) throws IOException {
+    /** Native Modus: GDV-Klassen im Java-21-Prozess, kein Java 8 erforderlich. */
+    public static GdvBridge nativeMode(Path gdvHome) {
+        return new GdvBridge(gdvHome, null, null, List.of(), Mode.NATIVE);
+    }
+
+    public void convertFile(Path in, Path out, String release) throws Exception {
         Direction dir = Direction.of(in.getFileName().toString());
         byte[] result = convertStream(Files.readAllBytes(in), release, dir);
         Files.createDirectories(out.toAbsolutePath().getParent());
         Files.write(out, result);
     }
 
-    /** Konvertiert Bytes ohne Temp-Datei (Worker) bzw. ueber Temp-Dateien (Fallback). */
-    public byte[] convertStream(byte[] data, String release, Direction dir) throws IOException {
-        if (!workerClasspath.isEmpty()) {
-            return worker().convert(data, release, dir);
+    public byte[] convertStream(byte[] data, String release, Direction dir) throws Exception {
+        switch (mode) {
+            case NATIVE:
+                return nativeConverter().convert(data, release, dir);
+            case WORKER:
+                return workerConverter().convert(data, release, dir);
+            default:
+                return convertViaCli(data, release, dir);
         }
-        return convertViaTempFiles(data, release, dir);
     }
 
-    private GdvWorker worker() throws IOException {
+    private NativeGdv nativeConverter() throws Exception {
+        if (nativeGdv == null) {
+            nativeGdv = new NativeGdv(gdvHome);
+        }
+        return nativeGdv;
+    }
+
+    private GdvWorker workerConverter() throws IOException {
         if (worker == null) {
             List<Path> cp = new ArrayList<>(workerClasspath);
             cp.add(gdvHome.resolve("lib").resolve("*"));
@@ -65,14 +95,14 @@ public final class GdvBridge implements Closeable {
         return worker;
     }
 
-    private byte[] convertViaTempFiles(byte[] data, String release, Direction dir) throws IOException {
+    private byte[] convertViaCli(byte[] data, String release, Direction dir) throws IOException {
         Path work = Files.createTempDirectory("gdv-work-");
         try {
             Path localIn = work.resolve("input" + dir.inExt());
             Files.write(localIn, data);
             Path localOut = work.resolve("input" + dir.outExt());
             Result r = run(localIn, release, propertiesFile());
-            if (r.exit != 0 || !Files.exists(localOut)) {
+            if (r.exit != 0 || !Files.exists(localOut) || Files.size(localOut) == 0) {
                 throw new IOException("Konvertierung fehlgeschlagen (exit=" + r.exit + "):\n" + r.log);
             }
             return Files.readAllBytes(localOut);
@@ -101,7 +131,6 @@ public final class GdvBridge implements Closeable {
                 input.toString(), "5", release, props.toString());
         ProcessBuilder pb = new ProcessBuilder(cmd).directory(gdvHome.toFile()).redirectErrorStream(true);
         Process p = pb.start();
-        java.io.PrintStream origOut = System.out;
         String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int exit;
         try {
@@ -126,6 +155,10 @@ public final class GdvBridge implements Closeable {
         if (worker != null) {
             worker.close();
             worker = null;
+        }
+        if (nativeGdv != null) {
+            nativeGdv.close();
+            nativeGdv = null;
         }
     }
 

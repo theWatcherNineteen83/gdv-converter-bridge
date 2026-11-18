@@ -28,6 +28,21 @@ java -cp gdv-client/target/classes de.prometheus.gdv.Main \
 
 Richtung ergibt sich aus der Endung der Eingabedatei (`.xml` -> `.snn`, `.snn` -> `.xml`).
 
+## Native Modus (Java 21, ohne Java 8)
+
+Der Konvertierungskern laeuft auch unter Java 21 - solange das Ergebnis in den Speicher
+geschrieben wird. Direktes Schreiben in einen `FileOutputStream` liefert unter Java 21 eine
+leere Datei (siehe `.specify/tasks.md`). Der native Modus konvertiert daher in-memory:
+
+```bash
+java -cp gdv-client/target/classes de.prometheus.gdv.Main \
+  --native --gdv-home /opt/gdv/GDVTools \
+  --in beispiel.xml --out beispiel.snn --release 2003
+```
+
+Damit wird kein Java-8-Prozess benoetigt; die GDV-Klassen werden in einem eigenen
+ClassLoader geladen. Verifiziert: Release 2003 und 2000 byte-identisch zum Java-8-Weg.
+
 ## Stream-Betrieb (ohne Temp-Dateien)
 
 ```bash
