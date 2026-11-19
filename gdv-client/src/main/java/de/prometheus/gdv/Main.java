@@ -26,12 +26,23 @@ import java.util.logging.Logger;
  *                 dynamisch gesucht (WorkerMainFinder)
  *   --worker-main vollqualifizierter Name der Worker-Hauptklasse (optional; sonst Suche
  *                 bzw. -Dgdv.worker.main)
+ *   --log-file    JUL-Log zusaetzlich in eine Datei schreiben (append); alternativ
+ *                 -Dgdv.log.file bzw. $GDV_LOG_FILE. Konsolen-Logging bleibt bestehen.
  */
 public final class Main {
 
     private static final Logger LOG = Logger.getLogger(Main.class.getName());
 
     public static void main(String[] args) {
+        if (args.length > 0 && args[0].equals("--gui")) {
+            TestGui.main(java.util.Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
+        try {
+            setupLogFile(parse(args).get("log-file"));
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Log-Datei konnte nicht eingerichtet werden", e);
+        }
         if (args.length > 0 && args[0].equals("--gui")) {
             TestGui.main(java.util.Arrays.copyOfRange(args, 1, args.length));
             return;
@@ -85,6 +96,21 @@ public final class Main {
             throw new IllegalArgumentException("Parameter --" + key + (env != null ? " oder $" + env : "") + " fehlt");
         }
         return v;
+    }
+
+    /**
+     * Richtet optional eine JUL-Log-Datei ein (append, SimpleFormatter).
+     * Quelle: --log-file, sonst -Dgdv.log.file, sonst $GDV_LOG_FILE. Ohne Angabe: nur Konsole.
+     */
+    static void setupLogFile(String logFileArg) throws java.io.IOException {
+        String logFile = logFileArg;
+        if (logFile == null || logFile.isBlank()) logFile = System.getProperty("gdv.log.file");
+        if (logFile == null || logFile.isBlank()) logFile = System.getenv("GDV_LOG_FILE");
+        if (logFile == null || logFile.isBlank()) return;
+        java.util.logging.FileHandler fh = new java.util.logging.FileHandler(logFile, true);
+        fh.setFormatter(new java.util.logging.SimpleFormatter());
+        Logger.getLogger("").addHandler(fh);
+        LOG.info("Log-Datei aktiv: " + logFile);
     }
 
     /** Parst --key value Paare und reine Flags (--native); Flags funktionieren auch am Ende. */

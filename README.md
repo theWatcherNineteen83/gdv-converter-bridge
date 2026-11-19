@@ -116,6 +116,11 @@ kann nicht als Prozess gestartet werden. Empfehlung:
   60 Zeilen fuer Fehlermeldungen vor (z. B. wenn der Worker nicht auf PING antwortet).
 - Der Worker selbst schreibt Fehler-Stacktraces auf stderr (stdout gehoert exklusiv dem
   Protokoll) - sie landen damit im Client-Log.
+- **Log-Datei:** `--log-file pfad/zur.log` (CLI-Starter) bzw. `-Dgdv.log.file=...` /
+  `$GDV_LOG_FILE` (auch als Spring-Boot-Property nutzbar) schreibt das JUL-Log zusaetzlich
+  in eine Datei (append, `SimpleFormatter`). Konsolen-Logging bleibt unveraendert.
+- Stille Fehler gibt es nicht mehr: auch "erfolgreich" aussehende 0-Byte-Ausgaben
+  (bekannter Vendor-Defekt unter Java 21) werden als Fehler protokolliert und abgebrochen.
 - Spring Boot: JUL ueber `jul-to-slf4j` (`SLF4JBridgeHandler.install()`) an das
   App-Logging anbinden; Logger-Name `de.prometheus.gdv`.
 

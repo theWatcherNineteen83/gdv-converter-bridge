@@ -91,4 +91,37 @@ class GdvBridgeTest {
         assertTrue(Main.splitClasspath(null).isEmpty());
         assertTrue(Main.splitClasspath("  ").isEmpty());
     }
+
+    @Test
+    void logFileOptionSchreibtJulLogInDatei() throws Exception {
+        Path logFile = temp.resolve("bridge.log");
+        Main.setupLogFile(logFile.toString());
+        try {
+            java.util.logging.Logger.getLogger(GdvBridgeTest.class.getName())
+                    .info("Test-Eintrag fuer die Log-Datei");
+            for (java.util.logging.Handler h : java.util.logging.Logger.getLogger("").getHandlers()) {
+                h.flush();
+            }
+            assertTrue(Files.exists(logFile), "Log-Datei wurde nicht angelegt");
+            assertTrue(Files.size(logFile) > 0, "Log-Datei ist leer");
+            assertTrue(Files.readString(logFile).contains("Test-Eintrag"), "Eintrag fehlt in der Log-Datei");
+        } finally {
+            java.util.logging.Logger root = java.util.logging.Logger.getLogger("");
+            for (java.util.logging.Handler h : root.getHandlers()) {
+                if (h instanceof java.util.logging.FileHandler) {
+                    root.removeHandler(h);
+                    h.close();
+                }
+            }
+        }
+    }
+
+    @Test
+    void setupLogFileOhneAngabeIstNoop() throws Exception {
+        Main.setupLogFile(null);
+        Main.setupLogFile("  ");
+        for (java.util.logging.Handler h : java.util.logging.Logger.getLogger("").getHandlers()) {
+            assertFalse(h instanceof java.util.logging.FileHandler, "Ohne Angabe darf kein FileHandler haengen");
+        }
+    }
 }

@@ -76,3 +76,20 @@ Klassen in andere Projekte verschoben.
   Daten-/Release-spezifischer Vendor-Fehler, nicht die Bridge. Rueckweg Release 2000 ok.
 - **Windows-Laufzeit nicht getestet** (kein Windows-Host verfuegbar); Pfadlogik ist
   unit-getestet und nutzt nur platformneutrale APIs.
+
+## v0.2.1 (19.11.2026): Test-GUI, Log-Datei-Option, keine stillen Swallows
+
+- **TestGui** (Swing, ohne externe Abhaengigkeiten): alle Pfade eintragbar, Modi
+  native/worker/CLI einzeln oder gemeinsam testbar, Byte-/SHA-256-Vergleich, live
+  JUL-Log-Anzeige inkl. Worker-stderr; `--gui` via CLI-Starter, `--selftest` fuer
+  headless (Exit 0 nur bei Erfolg + Byte-Identitaet). Einstellungen persistiert in
+  `~/.gdv-bridge-gui.properties`.
+- **Log-Datei-Option:** `--log-file <pfad>` (Main), alternativ `-Dgdv.log.file` bzw.
+  `$GDV_LOG_FILE` (Spring-Boot-tauglich). JUL FileHandler (append, SimpleFormatter)
+  am Root-Logger; Konsolen-Logging bleibt. Verifiziert: Info- und SEVERE-Stacktraces
+  landen in der Datei (Smoke-Test native RITA_2/2000: 37.214 Bytes, exit 0;
+  kaputtes XML: exit 1, 4x SEVERE mit Stacktrace im Log).
+- **Stille Exception-Schlucker beseitigt** (NativeGdv): JAR-Ladefehler, ClassLoader-
+  close-Fehler werden jetzt geloggt (WARNING/FINE) statt `ignored`.
+- Build miniedi (Zulu 25): `mvn -B clean package -Dgdv.home=/home/prometheus/gdv/GDVTools`
+  BUILD SUCCESS, 19 Tests, 0 Fehler (2 Integrationstests geskipped: kein JDK 8 auf Host).

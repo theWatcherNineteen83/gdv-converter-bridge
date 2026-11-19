@@ -40,7 +40,11 @@ public final class NativeGdv implements Closeable {
         if (Files.isDirectory(lib)) {
             try (Stream<Path> s = Files.list(lib)) {
                 s.filter(p -> p.toString().endsWith(".jar")).forEach(p -> {
-                    try { urls.add(p.toUri().toURL()); } catch (IOException ignored) { }
+                    try {
+                        urls.add(p.toUri().toURL());
+                    } catch (IOException e) {
+                        LOG.log(Level.WARNING, "JAR konnte nicht in den ClassLoader aufgenommen werden: " + p, e);
+                    }
                 });
             }
         }
@@ -53,7 +57,11 @@ public final class NativeGdv implements Closeable {
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "GDV-Klassen konnten nicht geladen/initialisiert werden (gdvHome="
                     + this.gdvHome + ")", e);
-            try { this.loader.close(); } catch (IOException ignored) { }
+            try {
+                this.loader.close();
+            } catch (IOException ce) {
+                LOG.log(Level.WARNING, "ClassLoader konnte nicht geschlossen werden", ce);
+            }
             throw e;
         }
     }
@@ -105,6 +113,10 @@ public final class NativeGdv implements Closeable {
 
     @Override
     public void close() {
-        try { loader.close(); } catch (IOException ignored) { }
+        try {
+            loader.close();
+        } catch (IOException e) {
+            LOG.log(Level.FINE, "ClassLoader konnte nicht geschlossen werden", e);
+        }
     }
 }
