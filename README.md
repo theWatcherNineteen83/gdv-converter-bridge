@@ -137,6 +137,41 @@ try (GdvBridge bridge = new GdvBridge(Path.of("/opt/gdv/GDVTools"), Path.of("/op
 new GdvBridge(gdvHome, java8, null, workerCp, "com.firma.gdv.WorkerMain");
 ```
 
+## Test-GUI (Mini-GUI fuer alle Wege)
+
+![Test-GUI](docs/gui-screenshot.png)
+
+Swing-Oberflaeche ohne externe Abhaengigkeiten: alle Pfade eintragbar (GDVTools, Java 8,
+Property-Datei, Eingabe, Ausgabe-Verzeichnis, Worker-Klassenpfad, Worker-Hauptklasse),
+Wege native / worker / CLI einzeln oder gemeinsam testbar. Ergebnis je Weg: Bytes,
+SHA-256, Dauer; danach Byte-Vergleich aller erfolgreichen Wege. JUL-Log der Bridge wird
+live in der GUI angezeigt (inkl. Worker-stderr). Einstellungen werden in
+`~/.gdv-bridge-gui.properties` gespeichert und beim Start geladen.
+
+```bash
+java -cp gdv-client-0.2.1.jar de.prometheus.gdv.TestGui
+# oder ueber den CLI-Starter:
+java -cp gdv-client-0.2.1.jar de.prometheus.gdv.Main --gui
+```
+
+- "WorkerMain suchen" scannt den eingetragenen Klassenpfad (WorkerMainFinder) und traegt
+  den Kandidaten bei eindeutigem Treffer automatisch ein.
+- Richtung wird aus der Endung der Eingabedatei erkannt (.xml -> .snn, .snn -> .xml).
+- Ausgabedateien: `<basis>-<modus>.<endung>` im Ausgabe-Verzeichnis (leer = neben der Eingabe).
+
+Headless (Server/CI, ohne Display) gibt es denselben Test als `--selftest`:
+
+```bash
+java -cp gdv-client-0.2.1.jar de.prometheus.gdv.TestGui --selftest \
+    --gdv-home /opt/gdv/GDVTools --in beispiel.xml --release 2003 \
+    --modes native,worker,cli --java8 /opt/gdv/jre8 \
+    --worker-cp gdv-worker-0.2.1.jar --out-dir /tmp/gdv-test
+```
+
+Exit 0 nur wenn alle gewaehlten Wege erfolgreich und byte-identisch sind; sonst Exit 1
+(Parameterfehler: Exit 2). Ohne Display und ohne `--selftest` meldet die GUI einen Hinweis
+und beendet sich mit Exit 2.
+
 ## Build & Tests
 
 ```bash

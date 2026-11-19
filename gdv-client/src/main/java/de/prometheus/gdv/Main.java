@@ -32,6 +32,10 @@ public final class Main {
     private static final Logger LOG = Logger.getLogger(Main.class.getName());
 
     public static void main(String[] args) {
+        if (args.length > 0 && args[0].equals("--gui")) {
+            TestGui.main(java.util.Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
         try {
             run(args);
         } catch (Exception e) {
@@ -84,7 +88,7 @@ public final class Main {
     }
 
     /** Parst --key value Paare und reine Flags (--native); Flags funktionieren auch am Ende. */
-    private static Map<String, String> parse(String[] args) {
+    static Map<String, String> parse(String[] args) {
         Map<String, String> m = new HashMap<>();
         for (int i = 0; i < args.length; i++) {
             if (!args[i].startsWith("--")) continue;
