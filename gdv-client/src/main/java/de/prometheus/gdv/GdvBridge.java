@@ -1,6 +1,7 @@
 package de.prometheus.gdv;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -134,7 +135,7 @@ public final class GdvBridge implements Closeable {
         if (worker == null) {
             List<Path> cp = new ArrayList<>(workerClasspath);
             cp.addAll(libJars(gdvHome));
-            cp.add(gdvHome.resolve("GDV-Schadennetz.jar"));
+            cp.add(mainJar(gdvHome));
             worker = GdvWorker.start(java8, cp, propertiesFile(), workerMainClass, gdvHome);
         }
         return worker;
@@ -189,13 +190,63 @@ public final class GdvBridge implements Closeable {
         Path props = Files.createTempFile("gdv-", ".properties");
         props.toFile().deleteOnExit();
         String content = "[GDV]\n"
-                + "schemaPath=" + gdvHome.resolve("konfig").resolve("xml") + "/\n"
-                + "workingPath=" + gdvHome.resolve("konfig") + "/\n"
+                + "schemaPath=" + propsDir(gdvHome.resolve("konfig").resolve("xml")) + "\n"
+                + "workingPath=" + propsDir(gdvHome.resolve("konfig")) + "\n"
                 + "schemaPrefix=xsd:\n"
                 + "nameSpaceURL=http://www.w3.org/2001/XMLSchema\n";
         Files.writeString(props, content, StandardCharsets.UTF_8);
         generatedProps = props;
         return props;
+    }
+
+    /**
+     * Windows-sichere Pfad-Schreibweise fuer GDV-Property-Dateien: Backslashes werden
+     * verdoppelt. Der Vendor-Parser liest Properties-Style-Escapes; einfache Backslashes
+     * werden sonst gefressen (C:\Tools\konfig wird zu C:Toolskonfig). Die mitgelieferte
+     * konfig/konverter.property des Vendors nutzt selbst doppelte Backslashes
+     * (schemaPath=konfig\\xml\\). Auf Linux unveraendert (Forward-Slashes).
+     */
+    static String propsDir(Path dir) {
+        String s = dir.toString();
+        if (!s.endsWith("/") && !s.endsWith("\\")) s += File.separator;
+        return escapePropsPath(s);
+    }
+
+    /** Verdoppelt Backslashes fuer Properties-Style-Parser (Plattform-unabhaengig testbar). */
+    static String escapePropsPath(String s) {
+        return s.replace("\\", "\\\\");
+    }
+
+    /**
+     * Findet das GDV-Hauptjar: exakt GDV-Schadennetz.jar, sonst versionierte Varianten
+     * (GDV-Schadennetz*.jar) im GDVTools-Verzeichnis oder in lib/. Beim Vendor liegen
+     * die Jars teils mit Versionsnummern im Dateinamen vor.
+     */
+    static Path mainJar(Path gdvHome) {
+        Path exact = gdvHome.resolve("GDV-Schadennetz.jar");
+        if (Files.isRegularFile(exact)) return exact;
+        List<Path> candidates = new ArrayList<>();
+        for (Path dir : List.of(gdvHome, gdvHome.resolve("lib"))) {
+            if (!Files.isDirectory(dir)) continue;
+            try (Stream<Path> s = Files.list(dir)) {
+                s.filter(p -> {
+                    String n = p.getFileName().toString().toLowerCase();
+                    return n.startsWith("gdv-schadennetz") && n.endsWith(".jar");
+                }).sorted().forEach(candidates::add);
+            } catch (IOException e) {
+                LOG.log(Level.SEVERE, "Jar-Suche fehlgeschlagen: " + dir, e);
+            }
+        }
+        if (candidates.isEmpty()) {
+            throw new IllegalArgumentException("GDV-Jar fehlt: GDV-Schadennetz.jar (oder GDV-Schadennetz*.jar) in "
+                    + gdvHome + " bzw. " + gdvHome.resolve("lib"));
+        }
+        if (candidates.size() > 1) {
+            LOG.warning(() -> "Mehrere GDV-Jars gefunden, nehme " + candidates.get(0) + ": " + candidates);
+        } else {
+            LOG.info(() -> "GDV-Jar (versioniert): " + candidates.get(0));
+        }
+        return candidates.get(0);
     }
 
     private Result run(Path input, String release, Path props) throws IOException {
@@ -205,7 +256,7 @@ public final class GdvBridge implements Closeable {
             classpath.append(jar);
         }
         if (classpath.length() > 0) classpath.append(java.io.File.pathSeparator);
-        classpath.append(gdvHome.resolve("GDV-Schadennetz.jar"));
+        classpath.append(mainJar(gdvHome));
         List<String> cmd = List.of(java8.toString(), "-cp", classpath.toString(), "sn.SN_XMLKonverter",
                 input.toString(), "5", release, props.toString());
         LOG.fine(() -> "GDV-CLI: " + String.join(" ", cmd));

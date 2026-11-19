@@ -93,3 +93,20 @@ Klassen in andere Projekte verschoben.
   close-Fehler werden jetzt geloggt (WARNING/FINE) statt `ignored`.
 - Build miniedi (Zulu 25): `mvn -B clean package -Dgdv.home=/home/prometheus/gdv/GDVTools`
   BUILD SUCCESS, 19 Tests, 0 Fehler (2 Integrationstests geskipped: kein JDK 8 auf Host).
+
+## v0.2.2 (Mail 140, Windows-Feldtest Georg Seher)
+
+- Befund: Worker startet, GDV-Klassen laden, aber Schema-Load scheitert:
+  `FileNotFoundException: GDV Converter BridgegdvconvertGDVToolskonfigxml\gdv2003.xsd`.
+  Ursache: generierte Property-Datei schrieb Windows-Pfade mit einfachen Backslashes;
+  der Vendor-Parser (Properties-Style-Escapes) frisst sie. Beweis: mitgelieferte
+  `konfig/konverter.property` nutzt doppelte Backslashes (`schemaPath=konfig\\xml\\`).
+- Fix: `GdvBridge.propsDir()/escapePropsPath()` verdoppeln Backslashes in generierten
+  Properties (Worker/CLI und NativeGdv). Linux-Pfade unveraendert.
+- Zusaetzlich: `GdvBridge.mainJar()` toleriert versionierte GDV-Schadennetz*.jar
+  (GDVTools-Verzeichnis oder lib/, exakter Name hat Vorrang) - Georgs Hinweis
+  "die jar Dateien haben Versionen".
+- Tests: 25/25 gruen (neu WindowsPropsTest 8: Reproduktion des Fress-Mechanismus,
+  Escape-Rundlauf, propsDir, mainJar-Varianten). Selftest miniedi: Hinweg K2/2003
+  native+worker+cli byte-identisch ce4f3f11...1751; Rueckweg RITA_2/2000 worker+cli
+  byte-identisch dc43bf88...610b. Windows-Laufzeit weiter ungetestet (kein Host).

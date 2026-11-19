@@ -27,8 +27,8 @@ import java.util.logging.Logger;
 /**
  * Mini-Test-GUI fuer die GDV-Bridge (Swing, keine externen Abhaengigkeiten).
  *
- * Start:  java -cp gdv-client-0.2.1.jar de.prometheus.gdv.TestGui
- *         oder: java -jar gdv-client-0.2.1.jar --gui   (bzw. Main --gui)
+ * Start:  java -cp gdv-client-0.2.2.jar de.prometheus.gdv.TestGui
+ *         oder: java -jar gdv-client-0.2.2.jar --gui   (bzw. Main --gui)
  *
  * Alle Pfade (GDVTools, Java 8, Property-Datei, Eingabe, Ausgabe, Worker-Klassenpfad,
  * Worker-Hauptklasse) sind eintragbar; die Wege native / worker / CLI lassen sich einzeln
@@ -113,7 +113,7 @@ public final class TestGui {
             case "native" -> GdvBridge.nativeMode(c.gdvHome);
             case "worker" -> {
                 if (c.workerClasspath.isEmpty())
-                    throw new IllegalArgumentException("Worker-Klassenpfad fehlt (z. B. gdv-worker-0.2.1.jar)");
+                    throw new IllegalArgumentException("Worker-Klassenpfad fehlt (z. B. gdv-worker-0.2.2.jar)");
                 String main = c.workerMain == null || c.workerMain.isBlank() ? null : c.workerMain.trim();
                 yield new GdvBridge(c.gdvHome, java8, c.propertyFile, c.workerClasspath, main);
             }

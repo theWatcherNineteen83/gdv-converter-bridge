@@ -32,8 +32,7 @@ public final class NativeGdv implements Closeable {
 
     public NativeGdv(Path gdvHome) throws Exception {
         this.gdvHome = gdvHome.toAbsolutePath();
-        Path jar = this.gdvHome.resolve("GDV-Schadennetz.jar");
-        if (!Files.exists(jar)) throw new IllegalArgumentException("GDV-Jar fehlt: " + jar);
+        Path jar = GdvBridge.mainJar(this.gdvHome);
         List<URL> urls = new ArrayList<>();
         urls.add(jar.toUri().toURL());
         Path lib = this.gdvHome.resolve("lib");
@@ -103,8 +102,8 @@ public final class NativeGdv implements Closeable {
         Path props = Files.createTempFile("gdv-native-", ".properties");
         props.toFile().deleteOnExit();
         String content = "[GDV]\n"
-                + "schemaPath=" + gdvHome.resolve("konfig").resolve("xml") + "/\n"
-                + "workingPath=" + gdvHome.resolve("konfig") + "/\n"
+                + "schemaPath=" + GdvBridge.propsDir(gdvHome.resolve("konfig").resolve("xml")) + "\n"
+                + "workingPath=" + GdvBridge.propsDir(gdvHome.resolve("konfig")) + "\n"
                 + "schemaPrefix=xsd:\n"
                 + "nameSpaceURL=http://www.w3.org/2001/XMLSchema\n";
         Files.writeString(props, content);

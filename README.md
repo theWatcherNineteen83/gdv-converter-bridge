@@ -76,6 +76,17 @@ Worker-Klassenpfad an - sie muessen nicht in `--worker-cp` stehen.
 
 ## Windows
 
+**Property-Dateien (v0.2.2):** Der Vendor-Parser liest Properties-Style-Escapes. Die von der
+Bridge generierte Property-Datei schreibt Windows-Pfade deshalb mit **verdoppelten Backslashes**
+(wie die mitgelieferte `konfig/konverter.property` des Vendors: `schemaPath=konfig\\xml\\`).
+Einfache Backslashes werden sonst gefressen (`C:\Tools\konfig\xml` -> `C:Toolskonfigxml`) und
+der Konverter wirft `FileNotFoundException: ...konfigxml\gdv2003.xsd` / "Keine Header-Definition
+in Schema vorhanden!". Unit-getestet via `Properties.load`-Rundlauf (WindowsPropsTest).
+
+**Versionierte Jars (v0.2.2):** Das GDV-Hauptjar wird als `GDV-Schadennetz.jar` gesucht, sonst
+`GDV-Schadennetz*.jar` im GDVTools-Verzeichnis oder in `lib/` (exakter Name hat Vorrang). Die
+lib-Jars werden unabhaengig von Versionsnummern im Dateinamen enumeriert.
+
 - Klassenpfade werden **ohne Wildcards** aufgebaut: `lib/*.jar` wird einzeln enumeriert.
   Ein Eintrag wie `lib\*` wird nur vom java-Launcher expandiert, nicht von jedem
   ClassLoader/Pfadkonsumenten - die Enumeration funktioniert ueberall.
@@ -154,9 +165,9 @@ live in der GUI angezeigt (inkl. Worker-stderr). Einstellungen werden in
 `~/.gdv-bridge-gui.properties` gespeichert und beim Start geladen.
 
 ```bash
-java -cp gdv-client-0.2.1.jar de.prometheus.gdv.TestGui
+java -cp gdv-client-0.2.2.jar de.prometheus.gdv.TestGui
 # oder ueber den CLI-Starter:
-java -cp gdv-client-0.2.1.jar de.prometheus.gdv.Main --gui
+java -cp gdv-client-0.2.2.jar de.prometheus.gdv.Main --gui
 ```
 
 - "WorkerMain suchen" scannt den eingetragenen Klassenpfad (WorkerMainFinder) und traegt
@@ -167,10 +178,10 @@ java -cp gdv-client-0.2.1.jar de.prometheus.gdv.Main --gui
 Headless (Server/CI, ohne Display) gibt es denselben Test als `--selftest`:
 
 ```bash
-java -cp gdv-client-0.2.1.jar de.prometheus.gdv.TestGui --selftest \
+java -cp gdv-client-0.2.2.jar de.prometheus.gdv.TestGui --selftest \
     --gdv-home /opt/gdv/GDVTools --in beispiel.xml --release 2003 \
     --modes native,worker,cli --java8 /opt/gdv/jre8 \
-    --worker-cp gdv-worker-0.2.1.jar --out-dir /tmp/gdv-test
+    --worker-cp gdv-worker-0.2.2.jar --out-dir /tmp/gdv-test
 ```
 
 Exit 0 nur wenn alle gewaehlten Wege erfolgreich und byte-identisch sind; sonst Exit 1
