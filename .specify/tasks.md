@@ -74,8 +74,9 @@ Klassen in andere Projekte verschoben.
 - **Offen (Vendor):** Rueckweg K2/Release 2003 wirft auch unter Java 8 (CLI) eine NPE in
   `DatensatzContainerListe2003.createContainerListFromGdv:224` (`satzartName` null) -
   Daten-/Release-spezifischer Vendor-Fehler, nicht die Bridge. Rueckweg Release 2000 ok.
-- **Windows-Laufzeit nicht getestet** (kein Windows-Host verfuegbar); Pfadlogik ist
-  unit-getestet und nutzt nur platformneutrale APIs.
+- **Windows-Laufzeit durch Feldtest bestaetigt** (Georg Seher, 19.11.2026 17:30, v0.2.2:
+  "klappt danke"); zuvor nur unit-getestet (kein Windows-Host verfuegbar), Pfadlogik
+  nutzt nur platformneutrale APIs.
 
 ## v0.2.1 (19.11.2026): Test-GUI, Log-Datei-Option, keine stillen Swallows
 
@@ -109,4 +110,5 @@ Klassen in andere Projekte verschoben.
 - Tests: 25/25 gruen (neu WindowsPropsTest 8: Reproduktion des Fress-Mechanismus,
   Escape-Rundlauf, propsDir, mainJar-Varianten). Selftest miniedi: Hinweg K2/2003
   native+worker+cli byte-identisch ce4f3f11...1751; Rueckweg RITA_2/2000 worker+cli
-  byte-identisch dc43bf88...610b. Windows-Laufzeit weiter ungetestet (kein Host).
+  byte-identisch dc43bf88...610b. Windows-Laufzeit durch Georgs Feldtest bestaetigt
+  (19.11.2026 17:30, "klappt danke").

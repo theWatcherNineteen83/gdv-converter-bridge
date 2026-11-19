@@ -76,6 +76,8 @@ Worker-Klassenpfad an - sie muessen nicht in `--worker-cp` stehen.
 
 ## Windows
 
+**Feldtest bestaetigt:** v0.2.2 laeuft auf Windows (Georg Seher, 19.11.2026, "klappt danke").
+
 **Property-Dateien (v0.2.2):** Der Vendor-Parser liest Properties-Style-Escapes. Die von der
 Bridge generierte Property-Datei schreibt Windows-Pfade deshalb mit **verdoppelten Backslashes**
 (wie die mitgelieferte `konfig/konverter.property` des Vendors: `schemaPath=konfig\\xml\\`).
