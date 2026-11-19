@@ -27,7 +27,7 @@ public final class WorkerMain {
     public static void main(String[] args) throws Exception {
         props = System.getProperty("gdv.props");
         if (props == null) {
-            System.err.println("gdv.props fehlt");
+            System.err.println("gdv.props fehlt - Aufruf mit -Dgdv.props=<property-datei>");
             System.exit(2);
         }
         proto = new PrintStream(new FileOutputStream(FileDescriptor.out), true, "UTF-8");
@@ -65,6 +65,9 @@ public final class WorkerMain {
                     proto.flush();
                 }
             } catch (Throwable t) {
+                // Stacktrace auf stderr (stdout gehoert exklusiv dem Protokoll);
+                // der Client liest stderr mit und protokolliert ihn.
+                t.printStackTrace();
                 proto.println("ERR " + t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()).replace('\n', ' '));
             }
         }
@@ -81,7 +84,11 @@ public final class WorkerMain {
         if ("XML".equals(direction)) {
             converter.convertToGdv(in, out);
         } else {
-            converter.convertToXml(in, out, release);
+            // Achtung: Der 3. Parameter von convertToXml ist die AUSGABE-CODIERUNG,
+            // nicht das Release (Vendor-API-Taeuschung). Release wird intern vom
+            // Konverter benutzt. Uebergabe von "2000" als Codierung erzeugt
+            // LSException unsupported-encoding. null = Vendor-Default (wie GDV-CLI).
+            converter.convertToXml(in, out, null);
         }
         return out.toByteArray();
     }

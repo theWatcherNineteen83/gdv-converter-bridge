@@ -41,3 +41,38 @@
   Log-Zeilen wie Java 8, erzeugt aber eine **0-Byte-Datei**. Java 8 erzeugt 6.062.587 Bytes.
 - Damit ist die Inkompatibilitaet real, aber **still**: kein Fehler, kein Exit-Code, nur leere
   Ausgabe. Deshalb prueft die Bruecke die Ausgabegroesse und bricht bei 0 Bytes ab.
+
+## v0.2.0 (19.11.2026): Windows, dynamischer Worker, Logging, Rueckweg-Fix
+
+Anlass: Mail von Georg Seher (19.11.2026, 14:07) - Integration in Windows/Spring Boot,
+Klassen in andere Projekte verschoben.
+
+- **Windows:** Klassenpfade ohne Wildcards - `lib/*.jar` wird enumeriert (`GdvBridge.libJars`),
+  Trennzeichen `File.pathSeparator`, Java-8-Binary-Aufloesung inkl. `java.exe` (`Java8Locator`).
+- **Dynamische Worker-Hauptklasse:** `WorkerMainFinder` sucht `WorkerMain.class` in
+  Verzeichnissen/Jars des extern mitgegebenen Klassenpfads; `--worker-cp` akzeptiert mehrere
+  Eintraege (`:`/`;`), `--worker-main` bzw. `-Dgdv.worker.main` als explizite Vorgabe.
+  Worker-Klassenpfad wird absolut normalisiert, Worker-cwd = GDVTools (wie CLI).
+- **Logging:** java.util.logging; Fehler mit Stacktrace (SEVERE), Worker-stderr wird
+  mitgelesen (WARNING, Prefix `[worker-stderr]`) und die letzten 60 Zeilen in Fehlermeldungen
+  eingehaengt; Worker schreibt Stacktraces auf stderr.
+- **Rueckweg-Fix (SNN->XML):** Der 3. Parameter von `gdv.XmlGdvKonverter.convertToXml` ist
+  die **Ausgabe-Codierung**, nicht das Release (Bytecode-Befund: `toXml(out, arg3)` ->
+  `LSOutput.setEncoding(arg3)`). Uebergabe des ReleaseStrings erzeugte
+  `LSException: unsupported-encoding`. Fix: `null` (Vendor-Default, wie GDV-CLI).
+- **Verifiziert (miniedi, Zulu 21 + Temurin 8, GDVTools Rev. 324):**
+  - Hinweg K2.xml/2003: native, worker (Original + verschobenes Package `com.huk.gdv.worker`,
+    dynamisch gefunden + explizit), CLI: alle **6.062.587 Bytes, SHA-256
+    ce4f3f117cecf923edad5f98fa07c60f82674c6c796ab45c7abf68c1a5321751** (Referenz identisch).
+  - Rueckweg RITA_2/2000: worker + CLI **byte-identisch** (47.262 Bytes,
+    SHA-256 dc43bf88e4bee41bafc6909a93b5a41decb7a586d0e5a4753d8fb0e01e7c610b);
+    native: DOM-identisch, 47.261 Bytes - einziges Delta ist ein Newline nach der
+    XML-Deklaration (JDK-Serializer vs. Xerces).
+  - Tests: 13/13 gruen (inkl. 2 Integrationstests mit GDVTools/JDK8).
+  - Fehler-Logging: kaputtes XML -> SAXParseException-Stacktrace im Log; unbekanntes
+    Release -> Worker-ERR + FileNotFoundException-Stacktrace via `[worker-stderr]`.
+- **Offen (Vendor):** Rueckweg K2/Release 2003 wirft auch unter Java 8 (CLI) eine NPE in
+  `DatensatzContainerListe2003.createContainerListFromGdv:224` (`satzartName` null) -
+  Daten-/Release-spezifischer Vendor-Fehler, nicht die Bridge. Rueckweg Release 2000 ok.
+- **Windows-Laufzeit nicht getestet** (kein Windows-Host verfuegbar); Pfadlogik ist
+  unit-getestet und nutzt nur platformneutrale APIs.

@@ -1,19 +1,16 @@
 # GDV Converter Bridge
 
-Ruft den GDV-XMLKonverter (GDVTools, `sn.SN_XMLKonverter`) aus einem Java-21-Programm auf.
-Der Konverter selbst laeuft in einem **Java-8-Prozess**, weil die GDV-Jars gegen eine aeltere
-JDK-Generation gebaut sind (Bytecode 51 = Java 7).
+Ruft den GDV-XMLKonverter (GDVTools, `sn.SN_XMLKonverter`) aus einem Java-21-Programm auf
+(Linux **und Windows**). Drei Betriebsarten:
 
-## Status
-
-Stufe 1 (Dateien) und Stufe 2 (Streams) sind umgesetzt. Streams laufen ueber einen persistenten
-Java-8-Worker ohne temporaere Dateien; ohne Worker-Classpath gibt es einen Temp-Datei-Fallback.
-Siehe `.specify/spec.md`, `.specify/plan.md`, `.specify/tasks.md`.
+- **native** (empfohlen): Konvertierung im Java-21-Prozess, in-memory, **kein Java 8 noetig**
+- **worker**: persistenter Java-8-Prozess mit binaerem Stream-Protokoll
+- **cli**: Java-8-Kindprozess pro Aufruf ueber Temp-Dateien (Fallback)
 
 ## Voraussetzungen
 
-- JDK 21 (Client), JDK 8 (Konverter-Prozess), z. B. `/opt/jdk8`
-- GDVTools entpackt, z. B. `/opt/gdv/GDVTools`
+- JDK 21+ (Client), fuer worker/cli zusaetzlich ein Java-8-JRE
+- GDVTools entpackt, z. B. `/opt/gdv/GDVTools` bzw. `C:\gdv\GDVTools`
 
 ## Aufruf (Datei)
 
@@ -58,12 +55,110 @@ java -cp gdv-client/target/classes de.prometheus.gdv.Main \
 Protokoll des Workers:
 `CONVERT <release> <XML|SNN> <len>` + Nutzdaten -> `OK <len>` + Nutzdaten oder `ERR <text>`.
 
+### Worker-Klassen in anderen Projekten/Packages (dynamische Hauptklasse)
+
+Die Worker-Klassen koennen in ein eigenes Projekt mit beliebigem Package verschoben
+werden. Der Client hardcodet den Package-Namen nicht mehr:
+
+- `--worker-cp` akzeptiert einen **kompletten Klassenpfad** mit mehreren Eintraegen,
+  getrennt durch das plattformspezifische Zeichen (Linux `:`, Windows `;`).
+- Die Hauptklasse wird darin **dynamisch gesucht**: jede Klasse mit dem einfachen Namen
+  `WorkerMain` in Verzeichnissen und Jars des Klassenpfads (`WorkerMainFinder`).
+  Der vollqualifizierte Name wird aus dem Pfad abgeleitet und dem Java-8-Prozess mitgegeben.
+- Explizite Vorgabe (z. B. bei umbenannter Klasse oder mehreren Treffern):
+  `--worker-main com.firma.gdv.WorkerMain` oder System-Property `-Dgdv.worker.main=...`.
+- Bei mehreren `WorkerMain`-Treffern gewinnt das Original-Package
+  `de.prometheus.gdv.worker.WorkerMain`, sonst ein eindeutiger Treffer mit `gdv` im
+  Package; andernfalls Fehler mit Kandidatenliste.
+
+Die GDV-Jars (`GDV-Schadennetz.jar` + `lib/*.jar`) haengt der Client automatisch an den
+Worker-Klassenpfad an - sie muessen nicht in `--worker-cp` stehen.
+
+## Windows
+
+- Klassenpfade werden **ohne Wildcards** aufgebaut: `lib/*.jar` wird einzeln enumeriert.
+  Ein Eintrag wie `lib\*` wird nur vom java-Launcher expandiert, nicht von jedem
+  ClassLoader/Pfadkonsumenten - die Enumeration funktioniert ueberall.
+- Trennzeichen ist immer `File.pathSeparator` (`;` unter Windows, `:` unter Linux).
+- Das Java-8-Binary wird plattformgerecht aufgeloest (`java.exe` unter Windows);
+  `--java8 C:\gdv\jre8` (Verzeichnis) oder `--java8 C:\gdv\jre8\bin\java` funktionieren beide.
+- Pfade mit Leerzeichen sind ok (ProcessBuilder-Argumente, kein Shell-Quoting noetig).
+
+```bat
+java -cp gdv-client\target\classes de.prometheus.gdv.Main ^
+  --native --gdv-home C:\gdv\GDVTools ^
+  --in beispiel.xml --out beispiel.snn --release 2003
+```
+
+## Java-8-JRE fuer Spring Boot: wohin damit?
+
+**Nicht ins Fat-Jar.** Ein eingebettetes JRE liegt als verschachtelter Eintrag im Jar und
+kann nicht als Prozess gestartet werden. Empfehlung:
+
+1. JRE **ausserhalb** der Anwendung ablegen, z. B. `<app-verzeichnis>/jre8/` oder ein
+   fester Pfad wie `C:\gdv\jre8` (Windows) bzw. `/opt/gdv/jre8` (Linux).
+2. Pfad konfigurierbar machen - der Client sucht in dieser Reihenfolge:
+   `--java8` / Konstruktor-Parameter -> System-Property `gdv.java8` ->
+   Umgebungsvariable `GDV_JAVA8` -> `jre8/`, `jre/`, `java8/` neben GDVTools bzw. im
+   Arbeitsverzeichnis. In Spring Boot also z. B. `application.properties`:
+   `gdv.java8=${GDV_JAVA8:}` bzw. `-Dgdv.java8=...` beim Start.
+3. **Am einfachsten: nativen Modus nutzen** (`GdvBridge.nativeMode(gdvHome)`). Dann wird
+   ueberhaupt kein Java 8 mehr gebraucht - nur das entpackte GDVTools-Verzeichnis.
+
+## Logging
+
+`java.util.logging` (JUL), keine externe Abhaengigkeit:
+
+- Fehler werden mit **Stacktrace** auf `SEVERE` protokolliert (Datei-/Stream-Konvertierung,
+  Worker-Start, GDV-CLI, native Initialisierung).
+- Worker-**stderr** wird nicht mehr verworfen: ein Hintergrund-Thread liest ihn,
+  protokolliert jede Zeile (`WARNING`, Prefix `[worker-stderr]`) und haelt die letzten
+  60 Zeilen fuer Fehlermeldungen vor (z. B. wenn der Worker nicht auf PING antwortet).
+- Der Worker selbst schreibt Fehler-Stacktraces auf stderr (stdout gehoert exklusiv dem
+  Protokoll) - sie landen damit im Client-Log.
+- Spring Boot: JUL ueber `jul-to-slf4j` (`SLF4JBridgeHandler.install()`) an das
+  App-Logging anbinden; Logger-Name `de.prometheus.gdv`.
+
 ## Bibliothek
 
 ```java
-try (GdvBridge bridge = new GdvBridge(Path.of("/opt/gdv/GDVTools"), Path.of("/opt/jdk8/bin/java"),
-                                      null, List.of(Path.of("gdv-worker/target/classes")))) {
-    bridge.convertFile(in, out, "2000");
-    byte[] snn = bridge.convertStream(xmlBytes, "2000", Direction.XML_TO_SNN);
+// nativ (kein Java 8):
+try (GdvBridge bridge = GdvBridge.nativeMode(Path.of("C:\\gdv\\GDVTools"))) {
+    byte[] snn = bridge.convertStream(xmlBytes, "2003", Direction.XML_TO_SNN);
 }
+
+// Worker mit externem Klassenpfad / verschobenem Package:
+try (GdvBridge bridge = new GdvBridge(Path.of("/opt/gdv/GDVTools"), Path.of("/opt/jdk8/bin/java"),
+                                      null, List.of(Path.of("mein-worker.jar")))) {
+    bridge.convertFile(in, out, "2000");
+}
+
+// Hauptklasse explizit (optional):
+new GdvBridge(gdvHome, java8, null, workerCp, "com.firma.gdv.WorkerMain");
 ```
+
+## Build & Tests
+
+```bash
+mvn -B clean package -Dgdv.home=/opt/gdv/GDVTools          # GDVTools nur lokal, nicht im Repo
+mvn -B test -Dgdv.home=... -Dgdv.java8=... \
+    -Dgdv.test.xml=beispiel.xml -Dgdv.worker.cp=gdv-worker/target/classes
+```
+
+Integrationstests skippen automatisch (assumeTrue), wenn GDVTools/JDK 8/Testdatei fehlen.
+GDVTools und Beispieldaten sind bewusst nicht im Repo (GDV-Copyright bzw. interne Daten).
+
+Siehe `.specify/spec.md`, `.specify/plan.md`, `.specify/tasks.md`.
+
+## Rueckweg (.snn -> .xml) - Befunde
+
+- Der 3. Parameter von `gdv.XmlGdvKonverter.convertToXml(in, out, arg3)` ist die
+  **Ausgabe-Codierung**, nicht das Release. Die Bridge uebergibt `null` (Vendor-Default,
+  byte-identisch zum GDV-CLI-Weg). Eine Release-Angabe als Codierung erzeugt
+  `LSException: unsupported-encoding`.
+- Verifiziert (Release 2000, RITA_2): worker und CLI byte-identisch (47.262 Bytes).
+  Native (Java 21) ist DOM-identisch; einziges Delta ist ein Newline nach der
+  XML-Deklaration (47.261 Bytes, JDK-Serializer vs. Xerces).
+- **Vendor-Grenze:** Release 2003 Rueckweg der 8,8-MB-Beispieldatei wirft auch unter
+  Java 8 eine NPE im GDV-Code (`DatensatzContainerListe2003`, `satzartName` null).
+  Das ist kein Bridge-Fehler; Release 2000 funktioniert.
